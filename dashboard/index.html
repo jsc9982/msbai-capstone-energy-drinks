@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Energy Drink Market</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+<script src="data.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --surface-0: #f4f3f0; --surface-1: #fcfcfb; --border: #e3e2dd; --grid: #ebeae6;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #7a7974;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948;
+  --other: #a3a29c; --pos: #2a78d6; --neg: #e34948;
+  --seq-0: #f0efec; --seq-1: #9ec5f4; --seq-2: #3987e5; --seq-3: #104281;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface-0: #111110; --surface-1: #1a1a19; --border: #2e2e2c; --grid: #262624;
+    --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+    --other: #6b6a65; --pos: #3987e5; --neg: #e66767;
+    --seq-0: #383835; --seq-1: #1c5cab; --seq-2: #5598e7; --seq-3: #cde2fb;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-0: #111110; --surface-1: #1a1a19; --border: #2e2e2c; --grid: #262624;
+  --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+  --other: #6b6a65; --pos: #3987e5; --neg: #e66767;
+  --seq-0: #383835; --seq-1: #1c5cab; --seq-2: #5598e7; --seq-3: #cde2fb;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface-0); color: var(--text-primary);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header, main { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+header { padding-top: 32px; padding-bottom: 8px; }
+h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: -0.01em; }
+h2 { font-size: 20px; margin: 40px 0 4px; }
+h3 { font-size: 15px; margin: 0 0 2px; }
+.sub, .note { color: var(--text-secondary); margin: 0; }
+.note { font-size: 13px; color: var(--text-muted); margin-top: 8px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 20px; }
+.card { min-width: 0; }
+.tile, .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.tile .label { font-size: 13px; color: var(--text-secondary); }
+.tile .value { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; margin: 2px 0; }
+.tile .delta { font-size: 13px; color: var(--text-muted); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 12px; margin-top: 12px; }
+.chart { width: 100%; height: 340px; }
+.chart.tall { height: 560px; }
+.controls { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+select { max-width: 100%; }
+select, .theme-btn { font: inherit; font-size: 13px; padding: 4px 8px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary); }
+details { margin-top: 8px; font-size: 13px; }
+summary { cursor: pointer; color: var(--text-secondary); }
+.tablewrap { max-height: 280px; overflow: auto; margin-top: 6px; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { position: sticky; top: 0; background: var(--surface-1); color: var(--text-secondary); font-weight: 500; }
+.empty { padding: 48px 16px; text-align: center; color: var(--text-secondary); }
+.empty code { background: var(--surface-1); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border); }
+footer { max-width: 1180px; margin: 48px auto 32px; padding: 0 16px; font-size: 13px; color: var(--text-muted); }
+.top { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <div>
+      <h1>US Energy Drink Market</h1>
+      <p class="sub">Convenience-store sales (PDI panel), market sizing (Euromonitor, Mintel), nutrition (USDA) and consumer research.</p>
+    </div>
+    <button class="theme-btn" id="themeBtn" type="button">Theme</button>
+  </div>
+</header>
+<main id="app"></main>
+<footer id="footer"></footer>
+
+<script>
+const D = window.DASHBOARD_DATA;
+const app = document.getElementById("app");
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const fmtMoney = v => v == null ? "–" : Math.abs(v) >= 1e9 ? `$${(v / 1e9).toFixed(2)}B` : Math.abs(v) >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : `$${v.toFixed(2)}`;
+const fmtPct = (v, d = 1) => v == null ? "–" : `${(v * 100).toFixed(d)}%`;
+const fmtSigned = (v, d = 1) => v == null ? "–" : `${v >= 0 ? "+" : "−"}${Math.abs(v * 100).toFixed(d)}%`;
+const monthLabel = m => new Date(m + "T00:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" });
+
+// Theme toggle: cycles light / dark, stored per viewer.
+const themeBtn = document.getElementById("themeBtn");
+try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+themeBtn.onclick = () => {
+  const dark = document.documentElement.dataset.theme
+    ? document.documentElement.dataset.theme === "dark"
+    : matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.dataset.theme = dark ? "light" : "dark";
+  try { localStorage.setItem("theme", document.documentElement.dataset.theme); } catch (e) {}
+  renderAll();
+};
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => renderAll());
+
+if (!D) {
+  app.innerHTML = `<div class="card empty" style="margin-top:24px">
+    <h3>No data yet</h3>
+    <p>Run the pipeline to build the BigQuery tables and export them here:</p>
+    <p><code>python -m pipeline.run_pipeline</code> then <code>python -m pipeline.export_dashboard_data</code></p></div>`;
+  throw new Error("dashboard/data.js not found; run the export step");
+}
+
+// Fixed brand → color mapping: top brands take slots 1-7 in revenue order, "Other" is gray.
+const brandColor = b => {
+  const i = D.top_brands.indexOf(b);
+  return i >= 0 ? css(`--s${i + 1}`) : css("--other");
+};
+const brandOrder = [...D.top_brands, "Other"];
+
+// --- Layout helpers -------------------------------------------------------
+const charts = [];
+function section(title, sub) {
+  app.insertAdjacentHTML("beforeend", `<h2>${title}</h2>${sub ? `<p class="sub">${sub}</p>` : ""}<div class="grid"></div>`);
+  return app.lastElementChild;
+}
+function card(grid, { title, sub, note, tall, controls, full }) {
+  const el = document.createElement("div");
+  el.className = "card";
+  if (full) el.style.gridColumn = "1 / -1";
+  el.innerHTML = `<h3>${title}</h3>${sub ? `<p class="sub" style="font-size:13px">${sub}</p>` : ""}
+    ${controls ? `<div class="controls">${controls}</div>` : ""}
+    <div class="chart${tall ? " tall" : ""}"></div>${note ? `<p class="note">${note}</p>` : ""}
+    <details><summary>View data</summary><div class="tablewrap"></div></details>`;
+  grid.appendChild(el);
+  return el;
+}
+function table(el, rows, cols) {
+  const head = cols.map(c => `<th>${c[0]}</th>`).join("");
+  const body = rows.map(r => `<tr>${cols.map(c => `<td>${c[1](r)}</td>`).join("")}</tr>`).join("");
+  el.querySelector(".tablewrap").innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+function base() {
+  const text = css("--text-secondary"), grid = css("--grid");
+  return {
+    textStyle: { fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif", color: text },
+    grid: { left: 8, right: 16, top: 36, bottom: 8, containLabel: true },
+    tooltip: { trigger: "axis", backgroundColor: css("--surface-1"), borderColor: css("--border"),
+      textStyle: { color: css("--text-primary"), fontSize: 12 }, confine: true },
+    legend: { top: 0, left: 0, icon: "roundRect", itemWidth: 10, itemHeight: 10, textStyle: { color: text, fontSize: 12 } },
+    xAxis: { axisLine: { lineStyle: { color: grid } }, axisTick: { show: false }, axisLabel: { color: text }, splitLine: { show: false } },
+    yAxis: { axisLine: { show: false }, axisLabel: { color: text }, splitLine: { lineStyle: { color: grid } } },
+  };
+}
+function plot(el, option) {
+  const node = el.querySelector(".chart");
+  const existing = echarts.getInstanceByDom(node);
+  if (existing) existing.dispose();
+  const c = echarts.init(node, null, { renderer: "svg" });
+  c.setOption(option);
+  charts.push(c);
+  return c;
+}
+addEventListener("resize", () => charts.forEach(c => c.resize()));
+
+// --- Sections -------------------------------------------------------------
+const renderers = [];
+
+function buildOverview() {
+  const ed = D.category_monthly.filter(r => r.segment === "Energy Drinks");
+  const last = ed[ed.length - 1];
+  const last12 = ed.slice(-12).reduce((s, r) => s + r.revenue, 0);
+  const prev12 = ed.slice(-24, -12).reduce((s, r) => s + r.revenue, 0);
+  const zs = D.zero_sugar_monthly[D.zero_sugar_monthly.length - 1];
+  const leader = D.brand_monthly_share.filter(r => r.month === last.month && r.brand !== "Other")
+    .sort((a, b) => b.revenue_share - a.revenue_share)[0];
+  app.insertAdjacentHTML("beforeend", `<div class="tiles">
+    <div class="tile"><div class="label">Panel revenue, last 12 months</div><div class="value">${fmtMoney(last12)}</div>
+      <div class="delta">${fmtSigned(last12 / prev12 - 1)} vs prior 12 months (panel also grew)</div></div>
+    <div class="tile"><div class="label">Revenue per store, ${monthLabel(last.month)}</div><div class="value">${fmtMoney(last.revenue_per_store)}</div>
+      <div class="delta">${fmtSigned(last.revenue_per_store_yoy_pct)} year over year</div></div>
+    <div class="tile"><div class="label">Average price per unit</div><div class="value">${fmtMoney(last.avg_price_per_unit)}</div>
+      <div class="delta">${fmtSigned(last.avg_price_yoy_pct)} year over year</div></div>
+    <div class="tile"><div class="label">Zero-sugar share of revenue</div><div class="value">${zs ? fmtPct(zs.zero_sugar_share, 0) : "–"}</div>
+      <div class="delta">${zs ? `${monthLabel(zs.month)}, ${fmtPct(zs.match_coverage, 0)} of revenue classified` : ""}</div></div>
+    <div class="tile"><div class="label">Category leader, ${monthLabel(last.month)}</div><div class="value">${leader ? leader.brand : "–"}</div>
+      <div class="delta">${leader ? fmtPct(leader.revenue_share) + " of panel revenue" : ""}</div></div>
+  </div>`);
+}
+
+function buildCategory() {
+  const g = section("Category trend", "Raw revenue mostly tracks the growing store panel, so trends are shown per store.");
+  const segs = [...new Set(D.category_monthly.map(r => r.segment))];
+  const c1 = card(g, { title: "Revenue per store", sub: "Monthly revenue ÷ stores carrying the segment",
+    controls: `<select aria-label="Segment">${segs.map(s => `<option>${s}</option>`).join("")}</select>`,
+    note: "Store count = stores carrying the most widely distributed brand, a lower bound on stores in the segment." });
+  const c2 = card(g, { title: "Year-over-year change", sub: "Revenue per store and average unit price vs same month last year" });
+  const sel = c1.querySelector("select");
+  const draw = () => {
+    const rows = D.category_monthly.filter(r => r.segment === sel.value);
+    const b = base();
+    plot(c1, { ...b, legend: { show: false },
+      xAxis: { ...b.xAxis, type: "time" },
+      yAxis: { ...b.yAxis, type: "value", axisLabel: { color: b.textStyle.color, formatter: v => "$" + v.toLocaleString() } },
+      tooltip: { ...b.tooltip, valueFormatter: v => "$" + v.toFixed(0) },
+      series: [{ name: sel.value, type: "line", showSymbol: false, lineStyle: { width: 2 }, color: css("--s1"),
+        data: rows.map(r => [r.month, r.revenue_per_store]) }] });
+    table(c1, rows, [["Month", r => r.month], ["Revenue", r => fmtMoney(r.revenue)], ["Rev / store", r => fmtMoney(r.revenue_per_store)],
+      ["Avg price", r => fmtMoney(r.avg_price_per_unit)], ["Consumer sentiment", r => r.consumer_confidence_index ?? "–"]]);
+    const yoy = rows.filter(r => r.revenue_per_store_yoy_pct != null);
+    const b2 = base();
+    plot(c2, { ...b2,
+      xAxis: { ...b2.xAxis, type: "time" },
+      yAxis: { ...b2.yAxis, type: "value", axisLabel: { color: b2.textStyle.color, formatter: v => (v * 100).toFixed(0) + "%" } },
+      tooltip: { ...b2.tooltip, valueFormatter: v => fmtSigned(v) },
+      series: [
+        { name: "Revenue per store", type: "line", showSymbol: false, lineStyle: { width: 2 }, color: css("--s1"), data: yoy.map(r => [r.month, r.revenue_per_store_yoy_pct]),
+          markLine: { silent: true, symbol: "none", label: { show: false }, lineStyle: { color: css("--text-muted"), type: "solid", width: 1 }, data: [{ yAxis: 0 }] } },
+        { name: "Average unit price", type: "line", showSymbol: false, lineStyle: { width: 2 }, color: css("--s2"), data: yoy.map(r => [r.month, r.avg_price_yoy_pct]) },
+      ] });
+    table(c2, yoy, [["Month", r => r.month], ["Rev / store YoY", r => fmtSigned(r.revenue_per_store_yoy_pct)], ["Price YoY", r => fmtSigned(r.avg_price_yoy_pct)]]);
+  };
+  sel.onchange = draw;
+  renderers.push(draw);
+}
+
+function buildBrands() {
+  const g = section("Brand competition", "Top brands by revenue over the latest 12 months; all others are grouped as Other.");
+  const c1 = card(g, { title: "Share of panel revenue by brand", full: true, tall: false });
+  const c2 = card(g, { title: "Share change, latest year", sub: "Percentage points vs same months of prior year" });
+  const c3 = card(g, { title: "Share by source, latest full year",
+    sub: "PDI covers convenience stores only; Passport and Mintel cover broader retail",
+    controls: `<select aria-label="Year"></select>` });
+  const draw = () => {
+    const months = [...new Set(D.brand_monthly_share.map(r => r.month))];
+    const b = base();
+    plot(c1, { ...b,
+      xAxis: { ...b.xAxis, type: "time" },
+      yAxis: { ...b.yAxis, type: "value", max: 1, axisLabel: { color: b.textStyle.color, formatter: v => (v * 100).toFixed(0) + "%" } },
+      tooltip: { ...b.tooltip, valueFormatter: v => fmtPct(v) , order: "seriesDesc" },
+      series: brandOrder.map(br => ({ name: br, type: "line", stack: "s", showSymbol: false, color: brandColor(br),
+        lineStyle: { width: 0 }, areaStyle: { opacity: 1 }, itemStyle: { borderColor: css("--surface-1"), borderWidth: 2 },
+        data: months.map(m => { const r = D.brand_monthly_share.find(x => x.month === m && x.brand === br); return [m, r ? r.revenue_share : 0]; }) })) });
+    table(c1, D.brand_monthly_share.filter(r => r.month === months[months.length - 1]).sort((a, b) => b.revenue_share - a.revenue_share),
+      [["Brand", r => r.brand], ["Share", r => fmtPct(r.revenue_share)], ["Revenue", r => fmtMoney(r.revenue)]]);
+
+    const lastYear = Math.max(...D.brand_annual.map(r => r.year));
+    const ann = D.brand_annual.filter(r => r.year === lastYear && r.share_change_pp != null).sort((a, b) => a.share_change_pp - b.share_change_pp);
+    const partial = ann[0] && ann[0].is_partial_year ? ` (YTD, ${ann[0].months_covered} months)` : "";
+    c2.querySelector("h3").textContent = `Share change, ${lastYear}${partial}`;
+    const b2 = base();
+    plot(c2, { ...b2, legend: { show: false }, grid: { ...b2.grid, top: 8 },
+      tooltip: { ...b2.tooltip, trigger: "item", formatter: p => `${p.name}<br>${p.value >= 0 ? "+" : ""}${p.value.toFixed(2)} pp` },
+      yAxis: { ...b2.yAxis, type: "category", data: ann.map(r => r.brand), splitLine: { show: false } },
+      xAxis: { ...b2.xAxis, type: "value", axisLabel: { color: b2.textStyle.color, formatter: v => v + " pp" }, splitLine: { lineStyle: { color: css("--grid") } } },
+      series: [{ type: "bar", barMaxWidth: 14, data: ann.map(r => ({ value: r.share_change_pp,
+        itemStyle: { color: r.share_change_pp >= 0 ? css("--pos") : css("--neg"), borderRadius: r.share_change_pp >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4] } })) }] });
+    table(c2, [...ann].reverse(), [["Brand", r => r.brand], ["Parent", r => r.parent_company], ["Share", r => fmtPct(r.revenue_share)],
+      ["Change", r => (r.share_change_pp >= 0 ? "+" : "") + r.share_change_pp.toFixed(2) + " pp"], ["Revenue YoY", r => fmtSigned(r.revenue_yoy_lfl_pct)]]);
+  };
+  const sel = c3.querySelector("select");
+  const sources = [["PDI c-store panel", "revenue_share_pct"], ["Euromonitor Passport", "retail_value_rsp_pct"], ["Mintel MULO", "dollar_share_pct"]];
+  const years = [...new Set(D.brand_share_benchmark.map(r => r.year))].sort().reverse();
+  sel.innerHTML = years.map(y => `<option>${y}</option>`).join("");
+  const drawBench = () => {
+    const y = +sel.value;
+    const rows = D.brand_share_benchmark.filter(r => r.year === y);
+    const brands = D.top_brands.filter(br => rows.some(r => r.brand === br));
+    const b = base();
+    const present = sources.filter(([s, m]) => rows.some(r => r.source === s && r.measure === m));
+    plot(c3, { ...b,
+      xAxis: { ...b.xAxis, type: "category", data: brands, axisLabel: { color: b.textStyle.color, interval: 0, rotate: brands.length > 5 ? 30 : 0 } },
+      yAxis: { ...b.yAxis, type: "value", axisLabel: { color: b.textStyle.color, formatter: v => v + "%" } },
+      tooltip: { ...b.tooltip, valueFormatter: v => v == null ? "–" : v.toFixed(1) + "%" },
+      series: present.map(([s, m], i) => ({ name: s, type: "bar", barGap: "15%", barMaxWidth: 18, color: css(`--s${i + 1}`),
+        itemStyle: { borderRadius: [4, 4, 0, 0] },
+        data: brands.map(br => { const r = rows.find(x => x.source === s && x.measure === m && x.brand === br); return r ? r.share_pct : null; }) })) });
+    table(c3, rows, [["Source", r => r.source], ["Measure", r => r.measure], ["Brand", r => r.brand], ["Share", r => r.share_pct.toFixed(1) + "%"]]);
+  };
+  sel.onchange = drawBench;
+  renderers.push(draw, drawBench);
+}
+
+function buildGeography() {
+  const g = section("Geography", "Brand share of energy-drink revenue by state, latest 12 months of store-level data.");
+  const end = D.state_brand_share[0] && D.state_brand_share[0].window_end_month;
+  const c = card(g, { title: "Brand share by state", full: true, tall: true,
+    sub: end ? `12 months ending ${monthLabel(end)}. Darker = larger share. States sorted by panel store count.` : "",
+    controls: `<select aria-label="Sort states by"><option value="stores">Sort: most panel stores</option>${D.top_brands.map(b => `<option value="${b}">Sort: ${b} share</option>`).join("")}</select>` });
+  const sel = c.querySelector("select");
+  const draw = () => {
+    const rows = D.state_brand_share;
+    const states = [...new Set(rows.map(r => r.state))];
+    const get = (s, b) => (rows.find(r => r.state === s && r.brand === b) || {}).revenue_share || 0;
+    const stores = s => (rows.find(r => r.state === s) || {}).state_stores || 0;
+    states.sort(sel.value === "stores" ? (a, b) => stores(b) - stores(a) : (a, b) => get(b, sel.value) - get(a, sel.value));
+    const data = [];
+    states.forEach((s, y) => brandOrder.forEach((br, x) => data.push([x, y, get(s, br)])));
+    const b = base();
+    plot(c, { ...b, legend: { show: false }, grid: { ...b.grid, top: 8, bottom: 48 },
+      tooltip: { ...b.tooltip, trigger: "item", formatter: p => `${states[p.value[1]]} · ${brandOrder[p.value[0]]}<br>${fmtPct(p.value[2])} of state revenue` },
+      xAxis: { ...b.xAxis, type: "category", data: brandOrder, position: "top", axisLabel: { color: b.textStyle.color, interval: 0, rotate: c.clientWidth < 640 ? 45 : 0 } },
+      yAxis: { ...b.yAxis, type: "category", data: states, inverse: true, splitLine: { show: false }, axisLabel: { color: b.textStyle.color, fontSize: 11, interval: 0 } },
+      visualMap: { min: 0, max: Math.max(...data.map(d => d[2])), calculable: false, orient: "horizontal", left: "center", bottom: 0,
+        itemHeight: 160, text: ["Higher share", "0%"], textStyle: { color: b.textStyle.color },
+        inRange: { color: [css("--seq-0"), css("--seq-1"), css("--seq-2"), css("--seq-3")] } },
+      series: [{ type: "heatmap", data, itemStyle: { borderColor: css("--surface-1"), borderWidth: 2, borderRadius: 3 } }] });
+    table(c, rows, [["State", r => r.state], ["Brand", r => r.brand], ["Share", r => fmtPct(r.revenue_share)], ["Revenue", r => fmtMoney(r.revenue)]]);
+  };
+  sel.onchange = draw;
+  renderers.push(draw);
+}
+
+function buildInnovation() {
+  const g = section("Innovation and product mix", "New SKU launches and the shift toward zero-sugar formulations.");
+  const c1 = card(g, { title: "SKU launches by brand", sub: "Share of launched SKUs still selling 12 months later",
+    note: "Launches after Jan 2019 only. Brands with at least 10 launches." });
+  const c2 = card(g, { title: "Zero-sugar share of revenue", sub: "Among SKUs matched to USDA nutrition data",
+    note: "Zero sugar = under 0.5 g sugar per 100 ml. Coverage (share of revenue matched) is in the tooltip and table." });
+  const draw = () => {
+    const rows = [...D.sku_launch_summary].filter(r => r.survival_rate_12m != null).sort((a, b) => a.survival_rate_12m - b.survival_rate_12m);
+    const b = base();
+    plot(c1, { ...b, legend: { show: false }, grid: { ...b.grid, top: 8 },
+      tooltip: { ...b.tooltip, trigger: "item", formatter: p => { const r = rows[p.dataIndex];
+        return `${r.brand}<br>${r.skus_launched} SKUs launched<br>${fmtPct(r.survival_rate_12m, 0)} still selling at 12 months`; } },
+      yAxis: { ...b.yAxis, type: "category", data: rows.map(r => r.brand), splitLine: { show: false } },
+      xAxis: { ...b.xAxis, type: "value", max: 1, axisLabel: { color: b.textStyle.color, formatter: v => (v * 100) + "%" }, splitLine: { lineStyle: { color: css("--grid") } } },
+      series: [{ type: "bar", barMaxWidth: 14, color: css("--s1"), itemStyle: { borderRadius: [0, 4, 4, 0] }, data: rows.map(r => r.survival_rate_12m) }] });
+    table(c1, D.sku_launch_summary, [["Brand", r => r.brand], ["Launched", r => r.skus_launched], ["Since 2024", r => r.skus_launched_since_2024],
+      ["12-mo survival", r => fmtPct(r.survival_rate_12m, 0)], ["Median dist. @6m", r => r.median_numeric_dist_m6?.toFixed(3) ?? "–"],
+      ["Median dist. @12m", r => r.median_numeric_dist_m12?.toFixed(3) ?? "–"]]);
+
+    const z = D.zero_sugar_monthly;
+    const b2 = base();
+    plot(c2, { ...b2, legend: { show: false },
+      xAxis: { ...b2.xAxis, type: "time" },
+      yAxis: { ...b2.yAxis, type: "value", min: 0, axisLabel: { color: b2.textStyle.color, formatter: v => (v * 100).toFixed(0) + "%" } },
+      tooltip: { ...b2.tooltip, formatter: ps => { const r = z[ps[0].dataIndex];
+        return `${monthLabel(r.month)}<br>Zero sugar: <b>${fmtPct(r.zero_sugar_share)}</b><br>Coverage: ${fmtPct(r.match_coverage, 0)}`; } },
+      series: [{ type: "line", showSymbol: false, lineStyle: { width: 2 }, color: css("--s3"), data: z.map(r => [r.month, r.zero_sugar_share]) }] });
+    table(c2, z, [["Month", r => r.month], ["Zero-sugar share", r => fmtPct(r.zero_sugar_share)], ["Coverage", r => fmtPct(r.match_coverage, 0)]]);
+  };
+  renderers.push(draw);
+}
+
+function buildMarket() {
+  const g = section("Market size and outlook", "All-channel US market from Euromonitor Passport and Mintel, including forecasts.");
+  const metrics = [...new Set(D.market_outlook.map(r => `${r.source} — ${r.metric}`))];
+  const c = card(g, { title: "US energy drink market", full: true,
+    controls: `<select aria-label="Metric">${metrics.map(m => `<option>${m}</option>`).join("")}</select>`,
+    note: "Dashed segment and shaded band (Mintel 90% interval) mark forecast years." });
+  const sel = c.querySelector("select");
+  const draw = () => {
+    const [src, metric] = sel.value.split(" — ");
+    const rows = D.market_outlook.filter(r => r.source === src && r.metric === metric).sort((a, b) => a.year - b.year);
+    const firstFc = rows.findIndex(r => r.is_forecast);
+    const hist = rows.map((r, i) => firstFc < 0 || i < firstFc ? r.value : null);
+    const fc = rows.map((r, i) => firstFc >= 0 && i >= firstFc - 1 ? r.value : null);
+    const band = rows.some(r => r.low_90 != null && r.is_forecast);
+    const b = base();
+    plot(c, { ...b, legend: { show: false },
+      xAxis: { ...b.xAxis, type: "category", data: rows.map(r => r.year), boundaryGap: false },
+      yAxis: { ...b.yAxis, type: "value", scale: true, axisLabel: { color: b.textStyle.color, formatter: v => v.toLocaleString() } },
+      tooltip: { ...b.tooltip, formatter: ps => { const r = rows[ps[0].dataIndex];
+        return `${r.year}${r.is_forecast ? " (forecast)" : ""}<br><b>${r.value?.toLocaleString(undefined, { maximumFractionDigits: 0 })}</b>`
+          + (r.is_forecast && r.low_90 != null ? `<br>90% range ${r.low_90.toLocaleString(undefined, { maximumFractionDigits: 0 })}–${r.high_90.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : ""); } },
+      series: [
+        ...(band ? [
+          { type: "line", stack: "band", silent: true, symbol: "none", lineStyle: { opacity: 0 }, data: rows.map(r => r.is_forecast ? r.low_90 : null) },
+          { type: "line", stack: "band", silent: true, symbol: "none", lineStyle: { opacity: 0 }, areaStyle: { color: css("--s1"), opacity: 0.15 },
+            data: rows.map(r => r.is_forecast ? r.high_90 - r.low_90 : null) }] : []),
+        { name: "Actual", type: "line", symbol: "circle", symbolSize: 6, lineStyle: { width: 2 }, color: css("--s1"), data: hist },
+        { name: "Forecast", type: "line", symbol: "circle", symbolSize: 6, lineStyle: { width: 2, type: "dashed" }, color: css("--s1"), data: fc },
+      ] });
+    table(c, rows, [["Year", r => r.year], ["Value", r => r.value?.toLocaleString(undefined, { maximumFractionDigits: 1 })],
+      ["Forecast", r => r.is_forecast ? "yes" : ""], ["90% low", r => r.low_90 ?? "–"], ["90% high", r => r.high_90 ?? "–"]]);
+  };
+  sel.onchange = draw;
+  renderers.push(draw);
+}
+
+function buildConsumers() {
+  const g = section("Consumers", "Mintel survey results by generation.");
+  const sets = [...new Set(D.consumer_generations.map(r => r.question_set))];
+  const c = card(g, { title: "What drives energy-drink use", full: true, tall: true,
+    controls: `<select aria-label="Question set">${sets.map(s => `<option>${s}</option>`).join("")}</select>` });
+  const sel = c.querySelector("select");
+  const draw = () => {
+    const rows = D.consumer_generations.filter(r => r.question_set === sel.value);
+    const gens = [...new Set(rows.map(r => r.generation))];
+    const items = [...new Set(rows.map(r => r.item))];
+    const avg = it => { const v = rows.filter(r => r.item === it); return v.reduce((s, r) => s + r.pct, 0) / v.length; };
+    items.sort((a, b) => avg(a) - avg(b));
+    const b = base();
+    plot(c, { ...b, legend: { ...b.legend, show: gens.length > 1 },
+      grid: { ...b.grid, top: gens.length > 1 ? 36 : 8 },
+      tooltip: { ...b.tooltip, axisPointer: { type: "shadow" }, valueFormatter: v => v == null ? "–" : v + "%" },
+      yAxis: { ...b.yAxis, type: "category", data: items, splitLine: { show: false },
+        axisLabel: { color: b.textStyle.color, width: Math.min(260, c.clientWidth * 0.4), overflow: "truncate", fontSize: 12 } },
+      xAxis: { ...b.xAxis, type: "value", axisLabel: { color: b.textStyle.color, formatter: v => v + "%" }, splitLine: { lineStyle: { color: css("--grid") } } },
+      series: gens.map((gen, i) => ({ name: gen, type: "bar", barMaxWidth: 10, barGap: "20%", color: css(`--s${i + 1}`),
+        itemStyle: { borderRadius: [0, 4, 4, 0] },
+        data: items.map(it => (rows.find(r => r.item === it && r.generation === gen) || {}).pct ?? null) })) });
+    table(c, rows, [["Item", r => r.item], ["Generation", r => r.generation], ["% of respondents", r => r.pct + "%"]]);
+  };
+  sel.onchange = draw;
+  renderers.push(draw);
+}
+
+function renderAll() { charts.length = 0; renderers.forEach(f => f()); }
+
+buildOverview();
+buildCategory();
+buildBrands();
+buildGeography();
+buildInnovation();
+buildMarket();
+buildConsumers();
+renderAll();
+document.getElementById("footer").textContent =
+  `Data: ${D.meta.analytics_dataset} (built from ${D.meta.source_dataset}), exported ${D.meta.generated_at}.`;
+</script>
+</body>
+</html>
