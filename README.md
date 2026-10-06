@@ -33,7 +33,7 @@ Viewer on the source dataset, plus BigQuery Job User and BigQuery Data Editor on
 
 Rebuild a single step with `--only 07`. Datasets can be changed with the
 `ED_SOURCE_DATASET`, `ED_TARGET_PROJECT` and `ED_TARGET_DATASET` environment variables.
-The dashboard is plain HTML, so it can also be published with GitHub Pages from `dashboard/`.
+`dashboard/data.js` is gitignored because it contains figures derived from licensed data (Mintel, Euromonitor, PDI) and this repo is public; don't publish it on a public site.
 
 ## Tables built
 

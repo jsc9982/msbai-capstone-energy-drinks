@@ -260,7 +260,10 @@ function buildBrands() {
   };
   const sel = c3.querySelector("select");
   const sources = [["PDI c-store panel", "revenue_share_pct"], ["Euromonitor Passport", "retail_value_rsp_pct"], ["Mintel MULO", "dollar_share_pct"]];
-  const years = [...new Set(D.brand_share_benchmark.map(r => r.year))].sort().reverse();
+  // Only offer years that at least two sources cover, so the comparison is meaningful.
+  const years = [...new Set(D.brand_share_benchmark.map(r => r.year))]
+    .filter(y => sources.filter(([s, m]) => D.brand_share_benchmark.some(r => r.year === y && r.source === s && r.measure === m)).length >= 2)
+    .sort((a, b) => b - a);
   sel.innerHTML = years.map(y => `<option>${y}</option>`).join("");
   const drawBench = () => {
     const y = +sel.value;
@@ -296,6 +299,7 @@ function buildGeography() {
     states.sort(sel.value === "stores" ? (a, b) => stores(b) - stores(a) : (a, b) => get(b, sel.value) - get(a, sel.value));
     const data = [];
     states.forEach((s, y) => brandOrder.forEach((br, x) => data.push([x, y, get(s, br)])));
+    c.querySelector(".chart").style.height = `${Math.max(560, states.length * 18 + 120)}px`;
     const b = base();
     plot(c, { ...b, legend: { show: false }, grid: { ...b.grid, top: 8, bottom: 48 },
       tooltip: { ...b.tooltip, trigger: "item", formatter: p => `${states[p.value[1]]} · ${brandOrder[p.value[0]]}<br>${fmtPct(p.value[2])} of state revenue` },
@@ -327,8 +331,8 @@ function buildInnovation() {
       xAxis: { ...b.xAxis, type: "value", max: 1, axisLabel: { color: b.textStyle.color, formatter: v => (v * 100) + "%" }, splitLine: { lineStyle: { color: css("--grid") } } },
       series: [{ type: "bar", barMaxWidth: 14, color: css("--s1"), itemStyle: { borderRadius: [0, 4, 4, 0] }, data: rows.map(r => r.survival_rate_12m) }] });
     table(c1, D.sku_launch_summary, [["Brand", r => r.brand], ["Launched", r => r.skus_launched], ["Since 2024", r => r.skus_launched_since_2024],
-      ["12-mo survival", r => fmtPct(r.survival_rate_12m, 0)], ["Median dist. @6m", r => r.median_numeric_dist_m6?.toFixed(3) ?? "–"],
-      ["Median dist. @12m", r => r.median_numeric_dist_m12?.toFixed(3) ?? "–"]]);
+      ["12-mo survival", r => fmtPct(r.survival_rate_12m, 0)], ["Median dist. @6m", r => r.median_numeric_dist_m6 == null ? "–" : fmtPct(r.median_numeric_dist_m6, 2)],
+      ["Median dist. @12m", r => r.median_numeric_dist_m12 == null ? "–" : fmtPct(r.median_numeric_dist_m12, 2)]]);
 
     const z = D.zero_sugar_monthly;
     const b2 = base();
@@ -379,6 +383,11 @@ function buildMarket() {
   renderers.push(draw);
 }
 
+// Generations keep the same order and color in every question set.
+const GEN_ORDER = ["Gen Z", "Millennials", "Gen X", "Gen X & older", "Baby Boomers", "Boomers & older", "All adults"];
+const GEN_COLOR = { "Gen Z": "--s1", "Millennials": "--s2", "Gen X": "--s3", "Gen X & older": "--s3",
+  "Baby Boomers": "--s4", "Boomers & older": "--s4", "All adults": "--s1" };
+
 function buildConsumers() {
   const g = section("Consumers", "Mintel survey results by generation.");
   const sets = [...new Set(D.consumer_generations.map(r => r.question_set))];
@@ -387,7 +396,7 @@ function buildConsumers() {
   const sel = c.querySelector("select");
   const draw = () => {
     const rows = D.consumer_generations.filter(r => r.question_set === sel.value);
-    const gens = [...new Set(rows.map(r => r.generation))];
+    const gens = GEN_ORDER.filter(gn => rows.some(r => r.generation === gn));
     const items = [...new Set(rows.map(r => r.item))];
     const avg = it => { const v = rows.filter(r => r.item === it); return v.reduce((s, r) => s + r.pct, 0) / v.length; };
     items.sort((a, b) => avg(a) - avg(b));
@@ -398,7 +407,7 @@ function buildConsumers() {
       yAxis: { ...b.yAxis, type: "category", data: items, splitLine: { show: false },
         axisLabel: { color: b.textStyle.color, width: Math.min(260, c.clientWidth * 0.4), overflow: "truncate", fontSize: 12 } },
       xAxis: { ...b.xAxis, type: "value", axisLabel: { color: b.textStyle.color, formatter: v => v + "%" }, splitLine: { lineStyle: { color: css("--grid") } } },
-      series: gens.map((gen, i) => ({ name: gen, type: "bar", barMaxWidth: 10, barGap: "20%", color: css(`--s${i + 1}`),
+      series: gens.map(gen => ({ name: gen, type: "bar", barMaxWidth: 10, barGap: "20%", color: css(GEN_COLOR[gen]),
         itemStyle: { borderRadius: [0, 4, 4, 0] },
         data: items.map(it => (rows.find(r => r.item === it && r.generation === gen) || {}).pct ?? null) })) });
     table(c, rows, [["Item", r => r.item], ["Generation", r => r.generation], ["% of respondents", r => r.pct + "%"]]);

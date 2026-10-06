@@ -4,3 +4,6 @@ __pycache__/
 .env
 *.json.key
 service-account*.json
+
+# Exported data is derived from licensed sources; keep it out of this public repo.
+dashboard/data.js
