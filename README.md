@@ -26,6 +26,11 @@ python -m pipeline.export_dashboard_data       # write dashboard/data.js
 python -m http.server -d dashboard 8000        # open http://localhost:8000
 ```
 
+For unattended runs (e.g. a cloud session), put a service-account key's JSON in the
+`GCP_SERVICE_ACCOUNT_JSON` environment variable instead. The account needs BigQuery Data
+Viewer on the source dataset, plus BigQuery Job User and BigQuery Data Editor on
+`msbai-capstone-energy-drinks`.
+
 Rebuild a single step with `--only 07`. Datasets can be changed with the
 `ED_SOURCE_DATASET`, `ED_TARGET_PROJECT` and `ED_TARGET_DATASET` environment variables.
 The dashboard is plain HTML, so it can also be published with GitHub Pages from `dashboard/`.

@@ -14,6 +14,15 @@ TARGET_LOCATION = "US"  # must match the source dataset's location
 
 
 def get_client(project: str) -> bigquery.Client:
+    # Service-account key JSON stored directly in an env var (e.g. a cloud environment secret).
+    sa_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
+    if sa_json:
+        import json
+
+        from google.oauth2 import service_account
+
+        info = json.loads(sa_json)
+        return bigquery.Client(project=project, credentials=service_account.Credentials.from_service_account_info(info))
     token = os.environ.get("GCP_ACCESS_TOKEN")
     if token:
         from google.oauth2.credentials import Credentials
