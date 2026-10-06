@@ -19,13 +19,13 @@ from pathlib import Path
 from google.api_core.exceptions import NotFound
 from google.cloud import bigquery
 
-from pipeline.config import SOURCE, TARGET, TARGET_LOCATION, TARGET_PROJECT, get_client
+from pipeline.config import CLEAN, SOURCE, TARGET, TARGET_LOCATION, TARGET_PROJECT, get_client
 
 SQL_DIR = Path(__file__).parent / "sql"
 
 
 def render(path: Path) -> str:
-    return path.read_text().replace("{src}", SOURCE).replace("{dst}", TARGET)
+    return path.read_text().replace("{src}", SOURCE).replace("{dst}", TARGET).replace("{clean}", CLEAN)
 
 
 def ensure_dataset(client: bigquery.Client) -> None:

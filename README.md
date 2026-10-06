@@ -50,6 +50,8 @@ Rebuild a single step with `--only 07`. Datasets can be changed with the
 | `zero_sugar_monthly` | Zero-sugar share of revenue over time, with match coverage | `pdi_energy_monthly_gtin`, `sku_nutrition` |
 | `market_outlook` | US market size history and forecast (Passport to 2030; Mintel with 90% band) | `passport_market_size`, `mintel_market_forecast` |
 | `consumer_generations` | Mintel motivations, concept interest, attitudes and occasions by generation | `mintel_*` |
+| `google_trends_brands` | Weekly US Google Trends interest per brand, rescaled to a Red Bull anchor; filled by `python -m pipeline.pull_brand_trends` (pytrends) | trends.google.com |
+| `product_master` | **One row per SKU** (126 columns): sales, distribution, geography, USDA + Open Food Facts nutrition and ingredients, ingredient and brand Google Trends, brand share. Column-by-column sources in `docs/product_master_schema.md` | all of the above + `msbai-dwd-jsc9982.clean` |
 
 ## Data notes
 

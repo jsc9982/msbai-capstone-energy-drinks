@@ -7,6 +7,9 @@ from google.cloud import bigquery
 # Shared course dataset the pipeline reads from.
 SOURCE = os.environ.get("ED_SOURCE_DATASET", "msbai-capstone-energydrinks.energy_drinks")
 
+# Open Food Facts products/ingredients and ingredient Google Trends.
+CLEAN = os.environ.get("ED_CLEAN_DATASET", "msbai-dwd-jsc9982.clean")
+
 # Dataset in your own project that the pipeline writes to.
 TARGET_PROJECT = os.environ.get("ED_TARGET_PROJECT", "msbai-capstone-energy-drinks")
 TARGET = f"{TARGET_PROJECT}.{os.environ.get('ED_TARGET_DATASET', 'energy_drinks_analytics')}"

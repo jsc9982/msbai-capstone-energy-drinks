@@ -1,9 +1,11 @@
 # Product master dataset: schema and source map
 
 **Target table:** `msbai-capstone-energy-drinks.energy_drinks_analytics.product_master`
+(built by `pipeline/sql/13_product_master.sql`; 2,176 rows × 126 columns)
 **Grain:** one row per energy-drink SKU (GTIN / UPC barcode).
 **Universe:** every GTIN in `energy_drinks.pdi_energy_monthly_gtin` (about 2,176 SKUs, all
-subcategory "Energy Drinks"), so every row has sales. Other sources are LEFT JOINed onto it.
+subcategory "Energy Drinks"), so every row has sales. SKU-level sales run through **December
+2025**, so every "last 12 months" window means calendar 2025. Other sources are LEFT JOINed onto it.
 
 Dataset shorthand used below:
 
@@ -29,6 +31,7 @@ ed.pdi_energy_monthly_gtin ──┬── ed.pdi_master_gtin            (produc
                                            └── clean.google_trends  (join: ingredient name = search_term)
                          ┌──────────────────── join key: canonical_brand (brand level) ─────────┐
                              ├── ed.brand_crosswalk            (brand → parent company)
+                             ├── analytics.google_trends_brands (brand search interest, pulled with pytrends)
                              ├── ed.passport_brand_shares      (all-channel share)
                              └── ed.mintel_mulo_brand_sales    (MULO share)
 ```
@@ -69,12 +72,14 @@ LOWER(REPLACE(product_ingredients.ingredient_name, '-', ' ')) = google_trends.se
 That expression matches 428 of the 432 terms. The dataset also contains category terms with no
 single ingredient behind them (`energy drink`, `sugar free energy drink`, `gaming energy`,
 `natural caffeine`). Those belong in a monthly context table, not on product rows. 341 PDI SKUs (about 65% of revenue) have
-at least one ingredient with trend data.
+at least one ingredient in their parsed Open Food Facts list. The build also searches the
+ingredient *text* for trend terms on SKUs without a parsed list (mostly USDA-only), which brings
+ingredient-trend coverage to **809 SKUs, 88% of 2025 revenue**.
 
 ### Brand-level data repeats on every SKU
 
-Passport and Mintel measure brands, not SKUs, so every Red Bull SKU carries the same Red Bull
-share values. That's fine for filtering and description. In a SKU-level model, though,
+Brand Google Trends, Passport and Mintel measure brands, not SKUs, so every Red Bull SKU carries
+the same Red Bull values. That's fine for filtering and description. In a SKU-level model, though,
 these columns can only explain differences *between brands*, and they shouldn't be summed across
 SKUs. Columns where this applies are tagged **[brand]** below.
 
@@ -182,7 +187,7 @@ are per serving.
 | `carbohydrate_g_per_100` | FLOAT64 | `carbohydrate_g` | as-is |
 | `protein_g_per_100` | FLOAT64 | `protein_g` | as-is |
 | `caffeine_mg_per_serving_usda` | FLOAT64 | `caffeine_per_serving_mg` | as-is (only about 9 SKUs have it) |
-| `is_zero_sugar` | BOOL | `total_sugars_g` | `< 0.5` g per 100 ml |
+| `is_zero_sugar` | BOOL | `total_sugars_g`, else `clean.energy_drinks.sugar` | `< 0.5` g per 100 ml |
 | `usda_discontinued_date` | DATE | `discontinued_date` | as-is |
 
 ### F. Ingredients and attributes: Open Food Facts
@@ -221,7 +226,7 @@ duplicates). Nutrient values are **per 100 g/ml**.
 |---|---|---|---|
 | `ingredients` | STRING | `clean.energy_drinks.ingredients_text`, then `ed.usda_branded_foods.ingredients` | `COALESCE(off_ingredients_text, usda_ingredients)` |
 | `ingredients_source` | STRING | n/a | `'open_food_facts'`, `'usda'` or NULL |
-| `has_caffeine`, `has_taurine`, `has_sucralose`, `has_guarana`, `has_ginseng`, `has_beta_alanine`, … | BOOL | `ingredients` | `REGEXP_CONTAINS(LOWER(ingredients), r'\btaurine\b')` etc.; pick the flags your analysis needs |
+| `has_caffeine`, `has_taurine`, `has_sucralose`, `has_aspartame`, `has_erythritol`, `has_stevia`, `has_guarana`, `has_ginseng`, `has_beta_alanine`, `has_green_tea`, `has_l_theanine`, `has_electrolytes` | BOOL | `ingredients` | `REGEXP_CONTAINS(LOWER(ingredients), r'taurine')` etc. |
 
 Open Food Facts comes first because it was pulled specifically for ingredients and has
 parsed lists. USDA fills in 418 SKUs that Open Food Facts lacks. Together they cover 810 SKUs,
@@ -230,9 +235,14 @@ about 90% of revenue.
 ### H. Google Trends for ingredients
 
 Source: `clean.google_trends` (`search_term`, `week_start_date`, `interest_score`), weekly from
-2021-07-04 to 2026-07-05. It links to a SKU through `clean.product_ingredients` using the
-`search_term` key above. Trends exist only for SKUs matched to Open Food Facts; SKUs with USDA
-ingredients only can be added with a text match, see section 6.
+2021-07-04 to 2026-07-05. It links to a SKU in one of two ways, recorded in
+`trend_match_method`:
+
+- **`open_food_facts_ingredient`** (341 SKUs): the `clean.product_ingredients` list, using the
+  `search_term` key above.
+- **`ingredient_text_match`** (468 SKUs, mostly USDA-only): the trend term appears as a whole
+  word in the unified `ingredients` text. Terms containing characters other than letters, digits
+  and spaces are skipped.
 
 **How to read these values:**
 - **Scores aren't comparable across terms.** Each term is scaled 0–100 on its own (each has a
@@ -246,12 +256,43 @@ ingredients only can be added with a text match, see section 6.
 
 | Column | Type | Source column(s) | Derivation |
 |---|---|---|---|
-| `ingredient_trends` | ARRAY<STRUCT<ingredient STRING, search_term STRING, interest_last_52w FLOAT64, interest_prior_52w FLOAT64, interest_yoy_pct FLOAT64>> | `product_ingredients.ingredient_name`; `google_trends.search_term`, `week_start_date`, `interest_score` | one element per matched ingredient; `AVG(interest_score)` over each 52-week window |
+| `ingredient_trends` | ARRAY<STRUCT<ingredient STRING, search_term STRING, match_method STRING, interest_last_52w FLOAT64, interest_prior_52w FLOAT64, interest_yoy_pct FLOAT64, has_signal BOOL, is_generic BOOL>> | `product_ingredients.ingredient_name`; `google_trends.search_term`, `week_start_date`, `interest_score` | one element per matched ingredient; `AVG(interest_score)` over each 52-week window |
 | `trend_terms_matched` | INT64 | same | number of ingredients with a usable trend series |
 | `trend_interest_yoy_avg_pct` | FLOAT64 | same | mean of `interest_yoy_pct` across the SKU's distinctive ingredients |
 | `trend_rising_ingredients` | INT64 | same | count of ingredients with `interest_yoy_pct > 0.20` |
 | `trend_top_rising_ingredient` | STRING | same | ingredient with the highest `interest_yoy_pct` |
 | `trend_has_signal` | BOOL | `google_trends.interest_score` | FALSE if every one of the SKU's matched terms is constant at 100 |
+| `trend_match_method` | STRING | n/a | `open_food_facts_ingredient` or `ingredient_text_match` |
+
+The generic-ingredient exclusion list is in the `generic_terms` CTE of `13_product_master.sql`
+(water, carbonated water, flavouring, vitamins, minerals, sodium, salt, sugar, added sugar, colour,
+acid, acidity regulator, preservative, sweetener, e330). Edit it there.
+
+### H2. Google Trends for brands [brand]
+
+Source: `msbai-capstone-energy-drinks.energy_drinks_analytics.google_trends_brands`, filled by
+`pipeline/pull_brand_trends.py` using **pytrends** (an unofficial Google Trends client). It
+covers weekly US interest over 5 years for the top 20 brands by 2025 PDI revenue. Search terms are
+in `BRAND_TERMS` in that script. Where Google has an entity "topic" for the drink, the script uses
+it instead of the raw phrase, which avoids false hits on names like "Celsius", "Ghost" or "Prime".
+It joins on `canonical_brand`.
+
+**These scores are comparable across brands.** Every request includes the anchor brand (Red Bull)
+plus up to 4 others, and each batch is rescaled to the anchor. So a brand at 20 gets about a fifth
+of Red Bull's peak search volume.
+
+| Column | Type | Source column(s) | Derivation |
+|---|---|---|---|
+| `brand_trends_search_term` | STRING | `search_term` | phrase plus the resolved topic id |
+| `brand_trends_interest_last_52w` | FLOAT64 | `interest_score`, `week_start_date` | mean over the latest 52 weeks |
+| `brand_trends_interest_prior_52w` | FLOAT64 | same | mean over the 52 weeks before that |
+| `brand_trends_interest_yoy_pct` | FLOAT64 | n/a | last ÷ prior − 1 |
+| `brand_trends_interest_peak` | FLOAT64 | `interest_score` | `MAX` |
+| `brand_trends_weekly` | ARRAY<STRUCT<week_start_date DATE, interest_score FLOAT64>> | `week_start_date`, `interest_score` | full weekly series |
+
+**Status:** the table exists but is **empty**. This cloud environment's network blocks
+`trends.google.com`, so the script hasn't run yet. Until it does, these columns are NULL and
+`has_brand_trends` is FALSE.
 
 The four category terms (`energy drink`, `sugar free energy drink`, `gaming energy`,
 `natural caffeine`) describe the whole market. Put them in the monthly companion table in
@@ -263,7 +304,7 @@ section 5, not on product rows.
 |---|---|---|---|---|
 | `passport_value_share_pct` | FLOAT64 | `ed.passport_brand_shares` | `share_pct` | `measure='retail_value_rsp_pct'`, latest `year`; brand mapped via `brand_crosswalk` (`source='passport'`) |
 | `passport_volume_share_pct` | FLOAT64 | `ed.passport_brand_shares` | `share_pct` | `measure='total_volume_pct'`, latest `year` |
-| `passport_company_value_share_pct` | FLOAT64 | `ed.passport_company_shares` | `share_pct` | joined on `parent_company` |
+| `passport_share_year` | INT64 | `ed.passport_brand_shares` | `year` | the latest year used |
 | `mintel_mulo_share_2025_pct` | FLOAT64 | `ed.mintel_mulo_brand_sales` | `share_2025_pct` | brand via `brand_crosswalk` (`source='mintel'`); `is_total_row = FALSE` |
 | `mintel_mulo_share_2026_pct` | FLOAT64 | `ed.mintel_mulo_brand_sales` | `share_2026_pct` | same |
 | `mintel_mulo_sales_change_pct` | FLOAT64 | `ed.mintel_mulo_brand_sales` | `sales_change_pct` | same |
@@ -277,8 +318,10 @@ section 5, not on product rows.
 | `has_usda_match` | BOOL | `usda_fdc_id IS NOT NULL` |
 | `has_off_match` | BOOL | `off_code IS NOT NULL` |
 | `has_off_ingredients` | BOOL | `off_ingredients_text IS NOT NULL` |
-| `has_trends` | BOOL | `trend_terms_matched > 0` |
-| `is_active` | BOOL | sold in the latest complete month |
+| `has_ingredients` | BOOL | `ingredients IS NOT NULL` |
+| `has_ingredient_trends` | BOOL | `trend_terms_matched > 0` |
+| `has_brand_trends` | BOOL | brand found in `google_trends_brands` |
+| `is_active` | BOOL | sold in the SKU table's last month (Dec 2025) |
 
 ---
 
@@ -318,15 +361,27 @@ ingredient terms, the four category-level trend terms that month, and
 `DATE_TRUNC(week_start_date, MONTH)`. Static product attributes stay in
 `product_master` and are joined on `gtin`.
 
-## 6. Open items before building
+## 6. Build status and open items
 
-1. **Decide whether to extend trends to USDA-only SKUs.** About 470 SKUs have USDA ingredient text
-   but no Open Food Facts match. Matching trend terms inside that text with
-   `REGEXP_CONTAINS(LOWER(ingredients), CONCAT(r'\b', search_term, r'\b'))` would roughly double
-   trend coverage. The risk is that short terms like `e330` won't appear in English USDA text.
-2. **Agree on the generic-ingredient exclusion list** for the trend averages.
-3. **Spot-check `off_kcal_per_100` and `off_caffeine_mg_per_100`** against a few known products
+Built on 2026-10-06: 2,176 SKUs, 126 columns, 5.6 GB scanned. Coverage:
+
+| | SKUs | Share of 2025 revenue |
+|---|---|---|
+| Any ingredient list | 810 | 88% |
+| Ingredient Google Trends | 809 | 88% |
+| SKUs selling in Dec 2025 | 1,448 | n/a |
+| Brand Google Trends | 0 (pending pytrends run) | n/a |
+
+To fill in brand trends, from a machine that can reach `trends.google.com`:
+
+```bash
+pip install -r requirements.txt pytrends
+python -m pipeline.pull_brand_trends        # ~5 requests, waits through rate limits
+python -m pipeline.run_pipeline --only 13   # rebuild product_master with brand trends
+```
+
+Still open:
+1. **Spot-check** `off_kcal_per_100` and `off_caffeine_mg_per_100` against a few known products
    (for example, Red Bull 8.4 oz is 80 mg caffeine and 110 kcal).
-4. **Decide whether you also want brand search interest.** It isn't in either dataset; it would
-   need a new Google Trends pull for brand names such as "red bull", "monster energy" and
-   "celsius".
+2. **Check each brand's resolved search term** in the pull script's output, especially the ones
+   that fall back to a plain phrase.
