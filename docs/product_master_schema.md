@@ -10,49 +10,71 @@ Dataset shorthand used below:
 | Shorthand | Full BigQuery path | Status |
 |---|---|---|
 | `ed` | `msbai-capstone-energydrinks.energy_drinks` | Schemas verified (queried 2026-10-06) |
-| `clean` | `msbai-dwd-jsc9982.clean` | **Not yet inspected.** Table and column names marked ⚠ are placeholders until confirmed |
+| `clean` | `msbai-dwd-jsc9982.clean` | Schemas verified (queried 2026-10-06). Tables: `energy_drinks` (Open Food Facts products, 4,931 rows), `product_ingredients` (one row per product × ingredient, 92,984 rows), `google_trends` (search term × week, 113,184 rows) |
+
+Both datasets are in location `US`, so they can be joined in one query.
 
 ---
 
 ## 1. How the sources fit together
 
 ```
-                         ┌──────────────────────── join key: gtin14 (SKU level) ───────────────────────┐
+                         ┌──────────────────── join key: gtin14 (SKU level) ────────────────────┐
 ed.pdi_energy_monthly_gtin ──┬── ed.pdi_master_gtin            (product attributes)
   (universe + revenue)       ├── ed.pdi_sku_month_distribution (store distribution, launch)
                              ├── ed.pdi_gtin_month_store       (state footprint)
-                             ├── ed.usda_branded_foods         (nutrition + USDA ingredients)
-                             └── clean.<open food facts> ⚠     (ingredients, additives, scores)
-                         ┌──────────────────────── join key: canonical_brand (brand level) ────────────┐
+                             ├── ed.usda_branded_foods         (nutrition + USDA ingredient text)
+                             └── clean.energy_drinks           (Open Food Facts: ingredients, scores)
+                                    └── clean.product_ingredients (one row per ingredient)
+                                           └── clean.google_trends  (join: ingredient name = search_term)
+                         ┌──────────────────── join key: canonical_brand (brand level) ─────────┐
                              ├── ed.brand_crosswalk            (brand → parent company)
-                             ├── clean.<google trends> ⚠       (search interest, via keyword→brand map)
                              ├── ed.passport_brand_shares      (all-channel share)
                              └── ed.mintel_mulo_brand_sales    (MULO share)
 ```
 
 ### Join keys
 
-**`gtin14`, the SKU key.** Each source stores barcodes differently: PDI `GTIN`, USDA `gtin_upc`,
-and the Open Food Facts `code` (EAN-13). Normalize all of them the same way:
+**`gtin14`, the SKU key.** Each source stores barcodes differently: PDI `GTIN` (14 digits,
+zero-padded), USDA `gtin_upc`, and Open Food Facts `clean.energy_drinks.product_id` (8–22 digits,
+all numeric). Normalize all of them the same way:
 
 ```sql
 LPAD(LTRIM(REGEXP_REPLACE(barcode, r'[^0-9]', ''), '0'), 14, '0') AS gtin14
 ```
 
-Earlier work matched only 612 of the 2,176 PDI GTINs to USDA by barcode. Some feeds drop the
-check digit, so if the match rate stays low, add a fallback join on the barcode without its last
-digit (`SUBSTR(gtin14, 1, 13)`) and record which join hit in `*_match_method`.
+Measured match rates against the 2,176 PDI energy-drink SKUs:
+
+| Source | SKUs matched | Share of PDI revenue |
+|---|---|---|
+| Open Food Facts (`clean.energy_drinks`) | 392 | 65.8% |
+| USDA (`ed.usda_branded_foods`, has ingredient text) | 565 | n/a |
+| Ingredient text from either source | 810 | 90.0% |
+
+A fallback match that ignores the barcode's check digit adds 32 SKUs but no material revenue, and it
+risks false matches. Use the exact match only.
 
 **`canonical_brand`, the brand key.** Comes from `ed.pdi_energy_monthly_gtin.canonical_brand`,
 which is already standardized. `ed.brand_crosswalk` maps raw labels to canonical brands for the
-sources `pdi`, `passport`, `mintel`, `simmons` and `gnpd`. It has **no Google Trends rows**, so
-you need to add one, either as rows with `source = 'google_trends'` in a project-owned copy of the
-crosswalk, or as a small mapping table `keyword → canonical_brand`.
+sources `pdi`, `passport`, `mintel`, `simmons` and `gnpd`.
+
+**`search_term`, the trends key.** `clean.google_trends` contains **ingredient** search terms
+(432 terms such as `caffeine`, `taurine`, `sucralose`, `e330`, `panax ginseng`), not brand names.
+It joins to products through their ingredients:
+
+```sql
+LOWER(REPLACE(product_ingredients.ingredient_name, '-', ' ')) = google_trends.search_term
+```
+
+That expression matches 428 of the 432 terms. The dataset also contains category terms with no
+single ingredient behind them (`energy drink`, `sugar free energy drink`, `gaming energy`,
+`natural caffeine`). Those belong in a monthly context table, not on product rows. 341 PDI SKUs (about 65% of revenue) have
+at least one ingredient with trend data.
 
 ### Brand-level data repeats on every SKU
 
-Google Trends, Passport and Mintel measure brands, not SKUs, so every Red Bull SKU carries the same
-Red Bull trends values. That's fine for filtering and description. In a SKU-level model, though,
+Passport and Mintel measure brands, not SKUs, so every Red Bull SKU carries the same Red Bull
+share values. That's fine for filtering and description. In a SKU-level model, though,
 these columns can only explain differences *between brands*, and they shouldn't be summed across
 SKUs. Columns where this applies are tagged **[brand]** below.
 
@@ -163,54 +185,77 @@ are per serving.
 | `is_zero_sugar` | BOOL | `total_sugars_g` | `< 0.5` g per 100 ml |
 | `usda_discontinued_date` | DATE | `discontinued_date` | as-is |
 
-### F. Ingredients and attributes: Open Food Facts ⚠
+### F. Ingredients and attributes: Open Food Facts
 
-Source: `clean.<open food facts table>` ⚠, joined on `gtin14` from the barcode column (Open Food
-Facts calls it `code`). The source columns below follow standard Open Food Facts field names;
-**rename them to match the cleaned table** once it's inspected.
+Source: `clean.energy_drinks`, joined on `gtin14` from `product_id`, with one row per barcode (no
+duplicates). Nutrient values are **per 100 g/ml**.
 
-| Column | Type | Source column(s) ⚠ | Derivation |
+| Column | Type | Source column(s) | Derivation |
 |---|---|---|---|
-| `off_code` | STRING | `code` | as-is |
+| `off_product_id` | STRING | `product_id` | as-is |
 | `off_product_name` | STRING | `product_name` | as-is |
-| `off_ingredients_text` | STRING | `ingredients_text` | as-is |
-| `off_ingredients_list` | ARRAY<STRING> | `ingredients_text` or parsed ingredient list | split on commas, trimmed, lower-cased |
-| `off_additives` | ARRAY<STRING> | `additives_tags` | as-is |
-| `off_caffeine_mg_per_100` | FLOAT64 | `caffeine_100g` | grams × 1000 if stored in grams |
-| `off_sugars_g_per_100` | FLOAT64 | `sugars_100g` | as-is |
-| `off_nutriscore_grade` | STRING | `nutriscore_grade` | as-is |
-| `off_nova_group` | INT64 | `nova_group` | as-is |
-| `off_labels` | ARRAY<STRING> | `labels_tags` | e.g. vegan, sugar-free |
-| `off_allergens` | ARRAY<STRING> | `allergens_tags` | as-is |
+| `off_brand` | STRING | `brand` | as-is |
+| `off_brands_tags` | ARRAY<STRING> | `brands_tags` | as-is |
+| `off_categories_tags` | ARRAY<STRING> | `categories_tags` | as-is |
+| `off_ingredients_text` | STRING | `ingredients_text` | as-is (empty string → NULL) |
+| `off_ingredients_tags` | ARRAY<STRING> | `ingredients_tags` | as-is (taxonomy tags, e.g. `en:taurine`) |
+| `off_countries` | STRING | `countries` | as-is |
+| `off_labels_tags` | ARRAY<STRING> | `labels_tags` | as-is (e.g. vegan, no-sugar claims) |
+| `off_serving_size` | STRING | `serving_size` | as-is |
+| `off_serving_size_value` / `_unit` | FLOAT64 / STRING | `serving_size_value`, `serving_size_unit` | as-is |
+| `off_kcal_per_100` | FLOAT64 | `energy` | as-is. Mostly kcal; values above about 100 are probably kJ, so check before using |
+| `off_sugars_g_per_100` | FLOAT64 | `sugar` | as-is |
+| `off_fat_g_per_100` | FLOAT64 | `fat` | as-is |
+| `off_protein_g_per_100` | FLOAT64 | `protein` | as-is |
+| `off_salt_g_per_100` | FLOAT64 | `salt` | as-is |
+| `off_caffeine_raw` | FLOAT64 | `caffeine` | as-is (units are inconsistent, see next row) |
+| `off_caffeine_mg_per_100` | FLOAT64 | `caffeine` | values 0.001–0.1 are grams → × 1000; values 1–100 are already mg; anything else → NULL |
+| `off_nutrition_grade` | STRING | `nutrition_grade` | Nutri-Score letter, as-is |
+| `off_last_modified` | TIMESTAMP | `last_modified` | as-is |
+| `off_ingredient_count` | INT64 | `clean.product_ingredients.ingredient_name` | `COUNT(DISTINCT)` per `product_id` |
+| `off_ingredients_ranked` | ARRAY<STRING> | `clean.product_ingredients.ingredient_name`, `ingredient_rank` | `ARRAY_AGG(ingredient_name ORDER BY ingredient_rank)` |
 
 ### G. Unified ingredients (the "ingredients list" column)
 
 | Column | Type | Source | Derivation |
 |---|---|---|---|
-| `ingredients` | STRING | `clean.<open food facts>` ⚠ then `ed.usda_branded_foods` | `COALESCE(off_ingredients_text, usda_ingredients)` |
+| `ingredients` | STRING | `clean.energy_drinks.ingredients_text`, then `ed.usda_branded_foods.ingredients` | `COALESCE(off_ingredients_text, usda_ingredients)` |
 | `ingredients_source` | STRING | n/a | `'open_food_facts'`, `'usda'` or NULL |
-| `has_taurine`, `has_sucralose`, `has_guarana`, … | BOOL | `ingredients` | `REGEXP_CONTAINS(LOWER(ingredients), r'taurine')` etc.; pick the flags your analysis needs |
+| `has_caffeine`, `has_taurine`, `has_sucralose`, `has_guarana`, `has_ginseng`, `has_beta_alanine`, … | BOOL | `ingredients` | `REGEXP_CONTAINS(LOWER(ingredients), r'\btaurine\b')` etc.; pick the flags your analysis needs |
 
-Open Food Facts comes first because it's the source you pulled specifically for ingredients. Swap
-the order if you find USDA more complete.
+Open Food Facts comes first because it was pulled specifically for ingredients and has
+parsed lists. USDA fills in 418 SKUs that Open Food Facts lacks. Together they cover 810 SKUs,
+about 90% of revenue.
 
-### H. Google Trends [brand] ⚠
+### H. Google Trends for ingredients
 
-Source: `clean.<google trends table>` ⚠, assumed shape `keyword` × `date` × `interest` (0–100).
-It joins to `canonical_brand` through the keyword→brand mapping described in section 1.
+Source: `clean.google_trends` (`search_term`, `week_start_date`, `interest_score`), weekly from
+2021-07-04 to 2026-07-05. It links to a SKU through `clean.product_ingredients` using the
+`search_term` key above. Trends exist only for SKUs matched to Open Food Facts; SKUs with USDA
+ingredients only can be added with a text match, see section 6.
 
-| Column | Type | Source column(s) ⚠ | Derivation |
+**How to read these values:**
+- **Scores aren't comparable across terms.** Each term is scaled 0–100 on its own (each has a
+  max of 100 and no zeros), so "taurine = 40, caffeine = 72" doesn't mean caffeine is searched
+  more. Use change within a term (last 52 weeks vs prior 52) as the signal.
+- **35 terms carry no signal.** Their score is 100 every week, so they're excluded via
+  `trend_has_signal`.
+- **Generic ingredients dominate.** "water", "flavouring", "vitamins" and "sodium" appear in most
+  products. Keep a short exclusion list so the product-level averages reflect distinctive
+  ingredients.
+
+| Column | Type | Source column(s) | Derivation |
 |---|---|---|---|
-| `trends_keyword` | STRING | `keyword` | the search term mapped to this brand |
-| `trends_interest_last_12m_avg` | FLOAT64 | `interest`, `date` | mean over the same 12 months as `revenue_last_12m` |
-| `trends_interest_prior_12m_avg` | FLOAT64 | `interest`, `date` | mean over the prior 12 months |
-| `trends_interest_yoy_pct` | FLOAT64 | n/a | last ÷ prior − 1 |
-| `trends_interest_peak` | FLOAT64 | `interest` | `MAX` |
-| `trends_monthly` | ARRAY<STRUCT<month DATE, interest FLOAT64>> | `interest`, `date` | monthly mean, nested |
+| `ingredient_trends` | ARRAY<STRUCT<ingredient STRING, search_term STRING, interest_last_52w FLOAT64, interest_prior_52w FLOAT64, interest_yoy_pct FLOAT64>> | `product_ingredients.ingredient_name`; `google_trends.search_term`, `week_start_date`, `interest_score` | one element per matched ingredient; `AVG(interest_score)` over each 52-week window |
+| `trend_terms_matched` | INT64 | same | number of ingredients with a usable trend series |
+| `trend_interest_yoy_avg_pct` | FLOAT64 | same | mean of `interest_yoy_pct` across the SKU's distinctive ingredients |
+| `trend_rising_ingredients` | INT64 | same | count of ingredients with `interest_yoy_pct > 0.20` |
+| `trend_top_rising_ingredient` | STRING | same | ingredient with the highest `interest_yoy_pct` |
+| `trend_has_signal` | BOOL | `google_trends.interest_score` | FALSE if every one of the SKU's matched terms is constant at 100 |
 
-Google Trends values are scaled 0–100 *within each request*. Brands are only comparable with
-each other if they were fetched in the same request (up to 5 terms) or rescaled against a shared
-anchor term. Check how the cleaned table was built before comparing brands.
+The four category terms (`energy drink`, `sugar free energy drink`, `gaming energy`,
+`natural caffeine`) describe the whole market. Put them in the monthly companion table in
+section 5, not on product rows.
 
 ### I. Market context from other sources [brand]
 
@@ -231,7 +276,8 @@ anchor term. Check how the cleaned table was built before comparing brands.
 |---|---|---|
 | `has_usda_match` | BOOL | `usda_fdc_id IS NOT NULL` |
 | `has_off_match` | BOOL | `off_code IS NOT NULL` |
-| `has_trends` | BOOL | `trends_keyword IS NOT NULL` |
+| `has_off_ingredients` | BOOL | `off_ingredients_text IS NOT NULL` |
+| `has_trends` | BOOL | `trend_terms_matched > 0` |
 | `is_active` | BOOL | sold in the latest complete month |
 
 ---
@@ -266,20 +312,21 @@ instead of copying them onto every SKU row.
 `product_master` nests the monthly history in `sales_monthly` and `trends_monthly`. For
 regression or forecasting it's often easier to also build a long table,
 `product_month` (one row per GTIN × month), with: revenue, units, stores_selling and
-numeric_dist (from `pdi_sku_month_distribution`), brand trends interest that month, and
-`consumer_confidence_index` (`ed.umich_consumer_sentiment`). Static product attributes stay in
+numeric_dist (from `pdi_sku_month_distribution`), the mean monthly interest of the SKU's
+ingredient terms, the four category-level trend terms that month, and
+`consumer_confidence_index` (`ed.umich_consumer_sentiment`). Weekly trends roll up to months by
+`DATE_TRUNC(week_start_date, MONTH)`. Static product attributes stay in
 `product_master` and are joined on `gtin`.
 
 ## 6. Open items before building
 
-1. List the tables and columns in `msbai-dwd-jsc9982.clean`, then replace every ⚠ placeholder:
-   ```sql
-   SELECT table_name, column_name, data_type
-   FROM `msbai-dwd-jsc9982.clean.INFORMATION_SCHEMA.COLUMNS`
-   ORDER BY table_name, ordinal_position;
-   ```
-2. Check the barcode match rates (PDI → USDA, PDI → Open Food Facts) and decide whether the
-   check-digit fallback is needed.
-3. Build the Google Trends keyword → `canonical_brand` mapping.
-4. Confirm the location of the `clean` dataset. BigQuery can't join datasets in different
-   locations; the `ed` dataset is in `US`.
+1. **Decide whether to extend trends to USDA-only SKUs.** About 470 SKUs have USDA ingredient text
+   but no Open Food Facts match. Matching trend terms inside that text with
+   `REGEXP_CONTAINS(LOWER(ingredients), CONCAT(r'\b', search_term, r'\b'))` would roughly double
+   trend coverage. The risk is that short terms like `e330` won't appear in English USDA text.
+2. **Agree on the generic-ingredient exclusion list** for the trend averages.
+3. **Spot-check `off_kcal_per_100` and `off_caffeine_mg_per_100`** against a few known products
+   (for example, Red Bull 8.4 oz is 80 mg caffeine and 110 kcal).
+4. **Decide whether you also want brand search interest.** It isn't in either dataset; it would
+   need a new Google Trends pull for brand names such as "red bull", "monster energy" and
+   "celsius".
